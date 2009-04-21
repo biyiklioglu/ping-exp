@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 COLORS=['#3194e0', '#49db50', '#e03131']
 TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
 COUNT=28800
-COUNT=500
-INTERVAL=.2
+COUNT=2000
+INTERVAL=.5
 HOST='69.41.192.2'
 
 # Specific to ping on Linux?
@@ -16,6 +16,11 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	"""Method to obtain some basic information about the capture file using the capinfos command."""
 	result = {}
 	result['responses'] = []
+
+	# Regular expressions to obtain the information from ping's output.
+	response_re = re.compile('icmp_seq=(?P<icmp_seq>\d+) ttl=(?P<ttl>\d+) time=(?P<time>\d+(\.\d+|)) ms')
+	summary_re = re.compile('(?P<transmitted>\d+) packets transmitted, (?P<received>\d+) received, (\+(?P<errors>\d+) errors, |)(?P<packet_loss>\d+)% packet loss, time (?P<time>\d+(\.\d+|))ms')
+	rtt_summary_re = re.compile('rtt min/avg/max/mdev = (?P<min>\d+(\.\d+|))/(?P<avg>\d+(\.\d+|))/(?P<max>\d+(\.\d+|))/(?P<mdev>\d+(\.\d+|)) ms')
 
 	# Construct the arguments to Popen.
 	args = ['ping'] # The binary to execute.
@@ -33,23 +38,10 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 		# Could not execute
 		return None
 
-	# Wait for it to complete.
-	ret = p.wait()
-	if ret != 0:
-		# Failed to execute ping.
-		for line in p.stderr.readlines():
-			print line
-		return None
-
-	# Regular expressions to obtain the information.
-	response_re = re.compile('icmp_seq=(?P<icmp_seq>\d+) ttl=(?P<ttl>\d+) time=(?P<time>\d+(\.\d+|)) ms')
-	summary_re = re.compile('(?P<transmitted>\d+) packets transmitted, (?P<received>\d+) received, (\+(?P<errors>\d+) errors, |)(?P<packet_loss>\d+)% packet loss, time (?P<time>\d+(\.\d+|))ms')
-	rtt_summary_re = re.compile('rtt min/avg/max/mdev = (?P<min>\d+(\.\d+|))/(?P<avg>\d+(\.\d+|))/(?P<max>\d+(\.\d+|))/(?P<mdev>\d+(\.\d+|)) ms')
-
-	# Extract the few required fields.
+	# Extract the required fields as they are output by ping.
 	for line in p.stdout.readlines():
 		line = line.rstrip()
-		print debug_prefix, line
+		#print debug_prefix, line
 
 		# Match the response lines.
 		m = response_re.search(line)
@@ -71,6 +63,16 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 						'avg': float(m.group('avg')),
 						'max': float(m.group('max')),
 						'mdev': float(m.group('mdev'))}
+
+	# Wait for ping to exit (which is should have already done since readlines got an EOF).
+	ret = p.wait()
+	if ret != 0:
+		# Failed to execute ping.
+		# TODO handle more than just 0.
+		for line in p.stderr.readlines():
+			print line
+
+		return None
 
 	return result
 
@@ -130,6 +132,10 @@ if __name__ == '__main__':
 	for num in range(len(experiments)):
 		tmp = results_q.get()
 		print "Got results for %(name)s" %{'name': tmp[0]}
+		if tmp[1] == None:
+			# The ping command failed. Bail.
+			print "No results for %(name)s. Exiting." %{'name': tmp[0]}
+			raise SystemExit()
 
 		# Store all of the results.
 		results[tmp[0]] = tmp[1]
