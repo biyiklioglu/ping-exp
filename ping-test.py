@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import pickle
+import getopt
+import sys
 from subprocess import Popen, PIPE
 import re
 from multiprocessing import Process, Queue
@@ -9,7 +12,7 @@ TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
 COUNT=28800
 COUNT=2000
 INTERVAL=.5
-HOST='69.41.192.2'
+HOST='69.41.199.58'
 
 # Specific to ping on Linux?
 def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
@@ -81,21 +84,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 	results_q.put((experiment_id, results))
 
-if __name__ == '__main__':
-	# Create a queue for receiving the results.
-	results_q = Queue()
-
-	# Setup the experiments.
-	experiments = []
-	experiments.append({'args': (results_q, 'Default', '%s'%(HOST)), 'kwargs': {'qos': 0, 'interval': INTERVAL, 'count': COUNT}})
-	experiments.append({'args': (results_q, 'High priority', '%s'%(HOST)), 'kwargs': {'qos': 16, 'interval': INTERVAL, 'count': COUNT}})
-	experiments.append({'args': (results_q, 'Low priority', '%s'%(HOST)), 'kwargs': {'qos': 8, 'interval': INTERVAL, 'count': COUNT}})
-
-	# Start each experiment.
-	for num,experiment in enumerate(experiments):
-		w = Process(target=do_ping, args=experiment['args'], kwargs=experiment['kwargs'])
-		w.start()
-
+def graph(results):
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -127,26 +116,14 @@ if __name__ == '__main__':
 	mdev_graph.set_ylabel('Mean deviation')
 	mdev_graph.set_xticks([])
 
-	# Wait for a result from each experiment and store them.
-	results = {}
-	for num in range(len(experiments)):
-		tmp = results_q.get()
-		print "Got results for %(name)s" %{'name': tmp[0]}
-		if tmp[1] == None:
-			# The ping command failed. Bail.
-			print "No results for %(name)s. Exiting." %{'name': tmp[0]}
-			raise SystemExit()
-
-		# Store all of the results.
-		results[tmp[0]] = tmp[1]
-
 	# Plot the response time data.
 	for num,result in enumerate(results):
 		print "DD:", result
 		points = [(icmp_seq / (1 / INTERVAL), time) for (icmp_seq, ttl, time) in results[result]['responses']]
 		print "LEN:", len(points)
 		points = zip(*points)
-		ret = ax.plot(points[0], points[1], c=COLORS[num])
+		ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
+		#ret = ax.plot(points[0], points[1], c=COLORS[num])
 
 	# Plot the packet loss graph.
 	loss = [results[key]['summary']['packet_loss'] for key in results.keys()]
@@ -169,10 +146,81 @@ if __name__ == '__main__':
 	# Add the legend.
 	plt.legend(ret, [key for key in results.keys()], loc=(1.1,.2))
 
-	#print results
-
-	#f = open('output.png', 'w')
-	#cjplt.savefig(f)
-	#f.close()
-
 	plt.show()
+
+def experiment():
+	# Create a queue for receiving the results from the work processes.
+	results_q = Queue()
+
+	# Setup the experiments.
+	experiments = []
+	experiments.append({'args': (results_q, 'Default', '%s'%(HOST)), 'kwargs': {'qos': 0, 'interval': INTERVAL, 'count': COUNT}})
+	experiments.append({'args': (results_q, 'High priority', '%s'%(HOST)), 'kwargs': {'qos': 16, 'interval': INTERVAL, 'count': COUNT}})
+	experiments.append({'args': (results_q, 'Low priority', '%s'%(HOST)), 'kwargs': {'qos': 8, 'interval': INTERVAL, 'count': COUNT}})
+
+	# Start each experiment.
+	for num,experiment in enumerate(experiments):
+		w = Process(target=do_ping, args=experiment['args'], kwargs=experiment['kwargs'])
+		w.start()
+
+	# Wait for a result from each experiment and store them.
+	results = {}
+	for num in range(len(experiments)):
+		tmp = results_q.get()
+		print "Got results for %(name)s" %{'name': tmp[0]}
+		if tmp[1] == None:
+			# The ping command failed. Bail.
+			print "No results for %(name)s. Exiting." %{'name': tmp[0]}
+			raise SystemExit()
+
+		# Store all of the results.
+		results[tmp[0]] = tmp[1]
+
+	return results
+
+def usage():
+	print "USAGE USAGE"
+
+if __name__ == '__main__':
+	write_file = False # Write the results to a file?
+	read_file = False # Read results from a file?
+
+	# Process the command line options.
+	try:
+		opts,args = getopt.getopt(sys.argv[1:], 'w:r:')
+	except getopt.GetoptError:
+		usage()
+		raise SystemExit()
+
+	for o,a in opts:
+		if o == '-w':
+			write_file = True
+			file = a
+		elif o == '-r':
+			read_file = True
+			file = a
+		else:
+			assert(False)
+
+	# It doesn't make sense to pass -r and -w at the same time.
+	if (write_file and read_file):
+		print "Error: -r and -w cannot be used together."
+		usage()
+		raise SystemExit
+
+	# Either do the experiment of get the results from a file.
+	if read_file:
+		f = open(file, 'r')
+		results = pickle.load(f)
+		f.close()
+	else:
+		results = experiment()
+
+	# Save the results if -w was passed (this is mutally exclusive of -r).
+	if write_file:
+		f = open(file, 'w')
+		pickle.dump(results, f)
+		f.close()
+
+	# Grpah the results.
+	graph(results)
