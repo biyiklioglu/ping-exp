@@ -9,10 +9,6 @@ import matplotlib.pyplot as plt
 
 COLORS=['#3194e0', '#49db50', '#e03131']
 TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
-COUNT=28800
-COUNT=2000
-INTERVAL=.5
-HOST='69.41.199.58'
 
 # Specific to ping on Linux?
 def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
@@ -84,7 +80,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 	results_q.put((experiment_id, results))
 
-def graph(results):
+def graph(results, ping_interval):
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -117,46 +113,38 @@ def graph(results):
 	mdev_graph.set_xticks([])
 
 	# Plot the response time data.
-	for num,result in enumerate(results):
-		print "DD:", result
-		points = [(icmp_seq / (1 / INTERVAL), time) for (icmp_seq, ttl, time) in results[result]['responses']]
-		print "LEN:", len(points)
+	for num,result in enumerate(sorted(results)):
+		points = [(icmp_seq / (1 / ping_interval), time) for (icmp_seq, ttl, time) in results[result]['responses']]
 		points = zip(*points)
 		ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
 		#ret = ax.plot(points[0], points[1], c=COLORS[num])
 
 	# Plot the packet loss graph.
-	loss = [results[key]['summary']['packet_loss'] for key in results.keys()]
-	print "LOSS keys:", results.keys()
-	print "LOSS:", loss
+	loss = [results[key]['summary']['packet_loss'] for key in sorted(results)]
 	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=COLORS)
 
 	# Plot the average latency graph.
-	latency = [results[key]['rtt_summary']['avg'] for key in results.keys()]
-	print "LATENCY keys:", results.keys()
-	print "LATENCY:", latency
+	latency = [results[key]['rtt_summary']['avg'] for key in sorted(results)]
 	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=COLORS)
 
 	# Plot the mean deviation graph.
-	mdev = [results[key]['rtt_summary']['mdev'] for key in results.keys()]
-	print "MDEV keys:", results.keys()
-	print "MDEV:", mdev
+	mdev = [results[key]['rtt_summary']['mdev'] for key in sorted(results)]
 	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=COLORS)
 
 	# Add the legend.
-	plt.legend(ret, [key for key in results.keys()], loc=(1.1,.2))
+	plt.legend(ret, [key for key in sorted(results)], loc=(1.1,.2))
 
 	plt.show()
 
-def experiment():
+def experiment(host, ping_count, ping_interval):
 	# Create a queue for receiving the results from the work processes.
 	results_q = Queue()
 
 	# Setup the experiments.
 	experiments = []
-	experiments.append({'args': (results_q, 'Default', '%s'%(HOST)), 'kwargs': {'qos': 0, 'interval': INTERVAL, 'count': COUNT}})
-	experiments.append({'args': (results_q, 'High priority', '%s'%(HOST)), 'kwargs': {'qos': 16, 'interval': INTERVAL, 'count': COUNT}})
-	experiments.append({'args': (results_q, 'Low priority', '%s'%(HOST)), 'kwargs': {'qos': 8, 'interval': INTERVAL, 'count': COUNT}})
+	experiments.append({'args': (results_q, 'Default', '%s'%(host)), 'kwargs': {'qos': 0, 'interval': ping_interval, 'count': ping_count}})
+	experiments.append({'args': (results_q, 'High priority', '%s'%(host)), 'kwargs': {'qos': 16, 'interval': ping_interval, 'count': ping_count}})
+	experiments.append({'args': (results_q, 'Low priority', '%s'%(host)), 'kwargs': {'qos': 8, 'interval': ping_interval, 'count': ping_count}})
 
 	# Start each experiment.
 	for num,experiment in enumerate(experiments):
@@ -178,18 +166,31 @@ def experiment():
 
 	return results
 
-def usage():
-	print "USAGE USAGE"
+def usage(prog_name):
+	output = "Usage: %s [-h HOST [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]\n" %(prog_name)
+	output += "-h HOST: Address of host to ping. Cannot be used with -r.\n"
+	output += "-w FILE: Write the results to FILE. Only valid with -h.\n"
+	output += "-r FILE: Read results from FILE. Cannot be used with -h.\n"
+	output += "-i INTERVAL: Time in seconds between pings. Default .2 seconds.\n"
+	output += "-c COUNT: Number of pings to transmit. Default 400.\n"
+
+	return output
+
+#TODO - results needs to embed the interval so it can be loaded. Otherwise the graph will be messed.
 
 if __name__ == '__main__':
+	ping_count=400
+	ping_interval=.2
+	host=None
 	write_file = False # Write the results to a file?
 	read_file = False # Read results from a file?
 
 	# Process the command line options.
 	try:
-		opts,args = getopt.getopt(sys.argv[1:], 'w:r:')
+		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:')
 	except getopt.GetoptError:
-		usage()
+		print usage(sys.argv[0])
+		print "Error: Unknown argument"
 		raise SystemExit()
 
 	for o,a in opts:
@@ -199,14 +200,32 @@ if __name__ == '__main__':
 		elif o == '-r':
 			read_file = True
 			file = a
+		elif o == '-c':
+			ping_count = int(a)
+		elif o == '-i':
+			ping_interval = float(a)
+		elif o == '-h':
+			host = a
 		else:
 			assert(False)
 
 	# It doesn't make sense to pass -r and -w at the same time.
-	if (write_file and read_file):
+	if write_file and read_file:
+		print usage(sys.argv[0])
 		print "Error: -r and -w cannot be used together."
-		usage()
-		raise SystemExit
+		raise SystemExit()
+
+	# No sense in passing -h with -r either.
+	if read_file and host:
+		print usage(sys.argv[0])
+		print "Error: -h and -r cannot be used together."
+		raise SystemExit()
+
+	# But one of -r or -h must be used.
+	if not read_file and not host:
+		print usage(sys.argv[0])
+		print "Error: Must pass one of -h or -r."
+		raise SystemExit()
 
 	# Either do the experiment of get the results from a file.
 	if read_file:
@@ -214,7 +233,7 @@ if __name__ == '__main__':
 		results = pickle.load(f)
 		f.close()
 	else:
-		results = experiment()
+		results = experiment(host, ping_count, ping_interval)
 
 	# Save the results if -w was passed (this is mutally exclusive of -r).
 	if write_file:
@@ -223,4 +242,4 @@ if __name__ == '__main__':
 		f.close()
 
 	# Grpah the results.
-	graph(results)
+	graph(results, ping_interval)
