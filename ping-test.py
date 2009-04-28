@@ -66,12 +66,11 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	# Wait for ping to exit (which is should have already done since readlines got an EOF).
 	ret = p.wait()
 	if ret != 0:
-		# Failed to execute ping.
-		# TODO handle more than just 0.
+		# Failed to execute ping. Dump the output ping sent to stderr.
 		for line in p.stderr.readlines():
 			print line
 
-		return None
+		return None # No results.
 
 	return result
 
@@ -80,7 +79,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 	results_q.put((experiment_id, results))
 
-def graph(results, ping_interval):
+def graph(results):
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -112,9 +111,12 @@ def graph(results, ping_interval):
 	mdev_graph.set_ylabel('Mean deviation')
 	mdev_graph.set_xticks([])
 
+	# For convenience get a ref to the experiment results.
+	experiments = results['experiments']
+
 	# Plot the response time data.
-	for num,result in enumerate(sorted(results)):
-		points = [(icmp_seq / (1 / ping_interval), time) for (icmp_seq, ttl, time) in results[result]['responses']]
+	for num,result in enumerate(sorted(experiments)):
+		points = [(icmp_seq / (1 / results['ping_interval']), time) for (icmp_seq, ttl, time) in experiments[result]['responses']]
 		points = zip(*points)
 		ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
 		#ret = ax.plot(points[0], points[1], c=COLORS[num])
@@ -123,19 +125,19 @@ def graph(results, ping_interval):
 	ax.axis(xmin=0,ymin=0,xmax=points[0][-1:][0])
 
 	# Plot the packet loss graph.
-	loss = [results[key]['summary']['packet_loss'] for key in sorted(results)]
+	loss = [experiments[key]['summary']['packet_loss'] for key in sorted(experiments)]
 	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=COLORS)
 
 	# Plot the average latency graph.
-	latency = [results[key]['rtt_summary']['avg'] for key in sorted(results)]
+	latency = [experiments[key]['rtt_summary']['avg'] for key in sorted(experiments)]
 	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=COLORS)
 
 	# Plot the mean deviation graph.
-	mdev = [results[key]['rtt_summary']['mdev'] for key in sorted(results)]
+	mdev = [experiments[key]['rtt_summary']['mdev'] for key in sorted(experiments)]
 	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=COLORS)
 
 	# Add the legend.
-	plt.legend(ret, [key for key in sorted(results)], loc=(1.1,.2))
+	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,.2))
 
 	plt.show()
 
@@ -154,8 +156,11 @@ def experiment(host, ping_count, ping_interval):
 		w = Process(target=do_ping, args=experiment['args'], kwargs=experiment['kwargs'])
 		w.start()
 
-	# Wait for a result from each experiment and store them.
+	# A place to store the results.
 	results = {}
+	results['experiments'] = {}
+
+	# Wait for a result from each experiment and store them.
 	for num in range(len(experiments)):
 		tmp = results_q.get()
 		print "Got results for %(name)s" %{'name': tmp[0]}
@@ -165,7 +170,13 @@ def experiment(host, ping_count, ping_interval):
 			raise SystemExit()
 
 		# Store all of the results.
-		results[tmp[0]] = tmp[1]
+		#results[tmp[0]] = tmp[1]
+		results['experiments'][tmp[0]] = tmp[1]
+
+	# Store the host, ping_count and ping_interval in results.
+	results['host'] = host
+	results['ping_count'] = ping_count
+	results['ping_interval'] = ping_interval
 
 	return results
 
@@ -179,8 +190,6 @@ def usage(prog_name):
 
 	return output
 
-#TODO - results needs to embed the interval so it can be loaded. Otherwise the graph will be messed.
-
 if __name__ == '__main__':
 	ping_count=400
 	ping_interval=.2
@@ -192,8 +201,8 @@ if __name__ == '__main__':
 	try:
 		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:')
 	except getopt.GetoptError:
-		print usage(sys.argv[0])
-		print "Error: Unknown argument"
+		print >> sys.stderr, usage(sys.argv[0])
+		print >> sys.stderr, "Error: Unknown argument"
 		raise SystemExit()
 
 	for o,a in opts:
@@ -214,20 +223,20 @@ if __name__ == '__main__':
 
 	# It doesn't make sense to pass -r and -w at the same time.
 	if write_file and read_file:
-		print usage(sys.argv[0])
-		print "Error: -r and -w cannot be used together."
+		print >> sys.stderr, usage(sys.argv[0])
+		print >> sys.stderr, "Error: -r and -w cannot be used together."
 		raise SystemExit()
 
 	# No sense in passing -h with -r either.
 	if read_file and host:
-		print usage(sys.argv[0])
-		print "Error: -h and -r cannot be used together."
+		print >> sys.stderr, usage(sys.argv[0])
+		print >> sys.stderr, "Error: -h and -r cannot be used together."
 		raise SystemExit()
 
 	# But one of -r or -h must be used.
 	if not read_file and not host:
-		print usage(sys.argv[0])
-		print "Error: Must pass one of -h or -r."
+		print >> sys.stderr, usage(sys.argv[0])
+		print >> sys.stderr, "Error: Must pass one of -h or -r."
 		raise SystemExit()
 
 	# Either do the experiment of get the results from a file.
@@ -245,4 +254,4 @@ if __name__ == '__main__':
 		f.close()
 
 	# Grpah the results.
-	graph(results, ping_interval)
+	graph(results)
