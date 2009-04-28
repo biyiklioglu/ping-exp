@@ -119,6 +119,9 @@ def graph(results, ping_interval):
 		ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
 		#ret = ax.plot(points[0], points[1], c=COLORS[num])
 
+	# Set the axis since auto leaves too much padding.
+	ax.axis(xmin=0,ymin=0,xmax=points[0][-1:][0])
+
 	# Plot the packet loss graph.
 	loss = [results[key]['summary']['packet_loss'] for key in sorted(results)]
 	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=COLORS)
