@@ -86,7 +86,7 @@ def graph(results):
 
 	# Create the response time graph.
 	ax = fig.add_subplot(2,1,1)
-	ax.set_title('Latency vs time', TITLE_FONT)
+	ax.set_title('Latency vs time for %s' %(results['host']), TITLE_FONT)
 	ax.set_xlabel('Time (s)')
 	ax.set_ylabel('Latency (ms)')
 
