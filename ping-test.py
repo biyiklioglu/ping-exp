@@ -5,7 +5,9 @@ import sys
 from subprocess import Popen, PIPE
 import re
 from multiprocessing import Process, Queue
+
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 COLORS=['#3194e0', '#49db50', '#e03131']
 TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
@@ -79,7 +81,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 	results_q.put((experiment_id, results))
 
-def graph(results):
+def graph(results, file=None):
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -139,7 +141,12 @@ def graph(results):
 	# Add the legend.
 	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,.2))
 
-	plt.show()
+	# Write out the image if requested.
+	if file:
+		canvas = FigureCanvas(fig)
+                canvas.print_png(file)
+	else:
+		plt.show()
 
 def experiment(host, ping_count, ping_interval):
 	# Create a queue for receiving the results from the work processes.
@@ -187,6 +194,7 @@ def usage(prog_name):
 	output += "-r FILE: Read results from FILE. Cannot be used with -h.\n"
 	output += "-i INTERVAL: Time in seconds between pings. Default .2 seconds.\n"
 	output += "-c COUNT: Number of pings to transmit. Default 400.\n"
+	output += "-o FILE: Name of a file to output a PNG of the graph to.\n"
 
 	return output
 
@@ -196,10 +204,11 @@ if __name__ == '__main__':
 	host=None
 	write_file = False # Write the results to a file?
 	read_file = False # Read results from a file?
+	image_filename=None
 
 	# Process the command line options.
 	try:
-		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:')
+		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:o:')
 	except getopt.GetoptError:
 		print >> sys.stderr, usage(sys.argv[0])
 		print >> sys.stderr, "Error: Unknown argument"
@@ -218,6 +227,8 @@ if __name__ == '__main__':
 			ping_interval = float(a)
 		elif o == '-h':
 			host = a
+		elif o == '-o':
+			image_filename = a
 		else:
 			assert(False)
 
@@ -253,5 +264,10 @@ if __name__ == '__main__':
 		pickle.dump(results, f)
 		f.close()
 
-	# Grpah the results.
-	graph(results)
+	# Graph the results.
+	if image_filename:
+		f = open(image_filename, 'w')
+		graph(results, image_filename)
+		f.close()
+	else:
+		graph(results)
