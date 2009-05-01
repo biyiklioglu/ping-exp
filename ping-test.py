@@ -135,14 +135,14 @@ def graph(results, file=None):
 	latency = [experiments[key]['rtt_summary']['avg'] for key in sorted(experiments)]
 	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=COLORS)
 
-	# Plot the mean deviation graph.
+	# Plot the latency mean deviation graph.
 	mdev = [experiments[key]['rtt_summary']['mdev'] for key in sorted(experiments)]
 	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=COLORS)
 
 	# Add the legend.
 	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,.2))
 
-	# Write out the image if requested.
+	# Write out the image if requested otherwise show it.
 	if file:
 		canvas = FigureCanvas(fig)
                 canvas.print_png(file)
