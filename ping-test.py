@@ -101,16 +101,16 @@ def graph(results, file=None):
 
 	# Create the average latency graph.
 	latency_graph = fig.add_subplot(2,4,6)
-	latency_graph.set_title('Latency', TITLE_FONT)
+	latency_graph.set_title('Latency avg', TITLE_FONT)
 	latency_graph.set_xlabel('Traffic class')
 	latency_graph.set_ylabel('Average (ms)')
 	latency_graph.set_xticks([])
 
 	# Create the mean deviation bar graph.
 	mdev_graph = fig.add_subplot(2,4,7)
-	mdev_graph.set_title('Latency', TITLE_FONT)
+	mdev_graph.set_title('Latency mdev', TITLE_FONT)
 	mdev_graph.set_xlabel('Traffic class')
-	mdev_graph.set_ylabel('Mean deviation')
+	mdev_graph.set_ylabel('Mean deviation (ms)')
 	mdev_graph.set_xticks([])
 
 	# For convenience get a ref to the experiment results.
@@ -177,7 +177,6 @@ def experiment(host, ping_count, ping_interval):
 			raise SystemExit()
 
 		# Store all of the results.
-		#results[tmp[0]] = tmp[1]
 		results['experiments'][tmp[0]] = tmp[1]
 
 	# Store the host, ping_count and ping_interval in results.
