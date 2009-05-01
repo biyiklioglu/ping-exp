@@ -2,6 +2,7 @@
 import pickle
 import getopt
 import sys
+import time
 from subprocess import Popen, PIPE
 import re
 from multiprocessing import Process, Queue
@@ -166,6 +167,7 @@ def experiment(host, ping_count, ping_interval):
 	# A place to store the results.
 	results = {}
 	results['experiments'] = {}
+	results['start-time'] = time.time() # Store approximately when the experiment started.
 
 	# Wait for a result from each experiment and store them.
 	for num in range(len(experiments)):
@@ -178,6 +180,9 @@ def experiment(host, ping_count, ping_interval):
 
 		# Store all of the results.
 		results['experiments'][tmp[0]] = tmp[1]
+
+	# Store (roughly) when the experiment ends.
+	results['end-time'] = time.time()
 
 	# Store the host, ping_count and ping_interval in results.
 	results['host'] = host
