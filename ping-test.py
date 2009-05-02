@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# Dan Siemon <dan@coverfire.com>
+# April 2009
+# License: Affero GPLv3
 import pickle
 import getopt
 import sys
@@ -15,7 +18,7 @@ TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
 
 # Specific to ping on Linux?
 def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
-	"""Method to obtain some basic information about the capture file using the capinfos command."""
+	"""Function to run the ping command and extract the results."""
 	result = {}
 	result['responses'] = []
 
