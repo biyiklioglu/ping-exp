@@ -85,7 +85,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 	results_q.put((experiment_id, results))
 
-def graph(results, file=None):
+def graph(results, line_graph=False, image_file=None):
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -124,8 +124,10 @@ def graph(results, file=None):
 	for num,result in enumerate(sorted(experiments)):
 		points = [(icmp_seq / (1 / results['ping_interval']), time) for (icmp_seq, ttl, time) in experiments[result]['responses']]
 		points = zip(*points)
-		ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
-		#ret = ax.plot(points[0], points[1], c=COLORS[num])
+		if line_graph:
+			ret = ax.plot(points[0], points[1], c=COLORS[num], linewidth=0.6)
+		else:
+			ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
 
 	# Set the axis since auto leaves too much padding.
 	ax.axis(xmin=0,ymin=0,xmax=points[0][-1:][0])
@@ -146,9 +148,9 @@ def graph(results, file=None):
 	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,.2))
 
 	# Write out the image if requested otherwise show it.
-	if file:
+	if image_file:
 		canvas = FigureCanvas(fig)
-                canvas.print_png(file)
+                canvas.print_png(image_file)
 	else:
 		plt.show()
 
@@ -202,6 +204,7 @@ def usage(prog_name):
 	output += "-i INTERVAL: Time in seconds between pings. Default .2 seconds.\n"
 	output += "-c COUNT: Number of pings to transmit. Default 400.\n"
 	output += "-o FILE: Name of a file to output a PNG of the graph to.\n"
+	output += "-l: Plot a line graph instead of a scatter plot.\n"
 
 	return output
 
@@ -209,13 +212,14 @@ if __name__ == '__main__':
 	ping_count=400
 	ping_interval=.2
 	host=None
+	line_graph=False
 	write_file = False # Write the results to a file?
 	read_file = False # Read results from a file?
 	image_filename=None
 
 	# Process the command line options.
 	try:
-		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:o:')
+		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:o:l')
 	except getopt.GetoptError:
 		print >> sys.stderr, usage(sys.argv[0])
 		print >> sys.stderr, "Error: Unknown argument"
@@ -236,6 +240,8 @@ if __name__ == '__main__':
 			host = a
 		elif o == '-o':
 			image_filename = a
+		elif o == '-l':
+			line_graph = True
 		else:
 			assert(False)
 
@@ -274,7 +280,7 @@ if __name__ == '__main__':
 	# Graph the results.
 	if image_filename:
 		f = open(image_filename, 'w')
-		graph(results, image_filename)
+		graph(results, line_graph=line_graph, image_file=f)
 		f.close()
 	else:
-		graph(results)
+		graph(results, line_graph=line_graph)
