@@ -16,9 +16,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 COLORS=['#3194e0', '#49db50', '#e03131']
 TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
 
-# Specific to ping on Linux?
 def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
-	"""Function to run the ping command and extract the results."""
+	"""Function to run the ping command and extract the results; may be Linux specific."""
 	result = {}
 	result['responses'] = []
 
@@ -81,11 +80,13 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	return result
 
 def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=False):
+	"""Function which is run as a process to run the ping experiment."""
 	results = ping(host, qos=qos, interval=interval, count=count, flood=flood, debug_prefix=experiment_id)
 
 	results_q.put((experiment_id, results))
 
 def graph(results, line_graph=False, image_file=None):
+	"""Function to graph the results of a ping experiment."""
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -155,6 +156,7 @@ def graph(results, line_graph=False, image_file=None):
 		plt.show()
 
 def experiment(host, ping_count, ping_interval):
+	"""Function to define and run the ping experiment."""
 	# Create a queue for receiving the results from the work processes.
 	results_q = Queue()
 
