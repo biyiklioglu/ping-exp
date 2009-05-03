@@ -3,6 +3,7 @@
 # April 2009
 # License: Affero GPLv3
 import pickle
+import random
 import getopt
 import sys
 import time
@@ -13,8 +14,29 @@ from multiprocessing import Process, Queue
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
-COLORS=['#3194e0', '#49db50', '#e03131']
-TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
+class Colors(object):
+	"""Class to manage a list of colors for the graph."""
+	def __init__(self):
+		# Pick the first few colors so at least they look good.
+		self.colors=['#3194e0', '#49db50', '#e03131']
+
+	def _expand_list(self, num_elements):
+		"""Function to expand the color list with random colors so that there are at least num_elements colors."""
+		for i in range(len(self.colors), num_elements):
+			c = "#%02x%02x%02x" %(random.randrange(0, 255, 1),random.randrange(0, 255, 1),random.randrange(0, 255, 1))
+			self.colors.append(c)
+
+	def __getitem__(self, index):
+		self._expand_list(index+1) # Need index+1 elements in the array to get element at index.
+
+		return self.colors[index]
+
+	def list(self, size):
+		"""Function to return a list of colors of length size."""
+		# First ensure the list has enough elements.
+		self._expand_list(size)
+
+		return self.colors[:size]
 
 def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	"""Function to run the ping command and extract the results; may be Linux specific."""
@@ -93,6 +115,9 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 
 def graph(results, line_graph=False, image_file=None):
 	"""Function to graph the results of a ping experiment."""
+	TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
+	colors = Colors()
+
 	# Create the figure.
 	fig = plt.figure(figsize=(10,6), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
@@ -136,27 +161,27 @@ def graph(results, line_graph=False, image_file=None):
 		points = [(icmp_seq / (1 / results['ping_interval']), time) for (icmp_seq, ttl, time) in experiments[result]['responses']]
 		points = zip(*points)
 		if line_graph:
-			ret = ax.plot(points[0], points[1], c=COLORS[num], linewidth=0.6)
+			ret = ax.plot(points[0], points[1], c=colors[num], linewidth=0.6)
 		else:
-			ret = ax.scatter(points[0], points[1], c=COLORS[num], s=3, linewidths=0)
+			ret = ax.scatter(points[0], points[1], c=colors[num], s=3, linewidths=0)
 
 	# Set the axis since auto leaves too much padding.
 	ax.axis(xmin=0,ymin=0,xmax=points[0][-1:][0])
 
 	# Plot the packet loss graph.
 	loss = [experiments[key]['summary']['packet_loss'] for key in sorted(experiments)]
-	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=COLORS)
+	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=colors.list(len(loss)))
 
 	# Plot the average latency graph.
 	latency = [experiments[key]['rtt_summary']['avg'] for key in sorted(experiments)]
-	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=COLORS)
+	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=colors.list(len(latency)))
 
 	# Plot the latency mean deviation graph.
 	mdev = [experiments[key]['rtt_summary']['mdev'] for key in sorted(experiments)]
-	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=COLORS)
+	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=colors.list(len(mdev)))
 
 	# Add the legend.
-	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,.2))
+	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,0))
 
 	# Write out the image if requested otherwise show it.
 	if image_file:
