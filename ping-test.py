@@ -68,19 +68,25 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 						'max': float(m.group('max')),
 						'mdev': float(m.group('mdev'))}
 
-	# Wait for ping to exit (which is should have already done since readlines got an EOF).
+	# Wait for ping to exit (which is should have already happened since readlines got an EOF).
+	# 0 - At least one response received.
+	# 1 - No responses received. DNS lookup etc was OK. Still get summary line.
+	# 2 - Error.
 	ret = p.wait()
-	if ret != 0:
-		# Failed to execute ping. Dump the output ping sent to stderr.
+	if ret >= 2:
+		# Ping failed. Dump the output ping sent to stderr.
 		for line in p.stderr.readlines():
 			print line
 
 		return None # No results.
+	elif ret == 1:
+		# Need to populate empty summary result fields since ping doesn't output them in this case.
+		result['rtt_summary'] = {'min': 0.0, 'avg': 0.0, 'max': 0.0, 'mdev': 0.0}
 
 	return result
 
 def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=False):
-	"""Function which is run as a process to run the ping experiment."""
+	"""Function which is executed as a process to run the ping experiment."""
 	results = ping(host, qos=qos, interval=interval, count=count, flood=flood, debug_prefix=experiment_id)
 
 	results_q.put((experiment_id, results))
@@ -123,6 +129,10 @@ def graph(results, line_graph=False, image_file=None):
 
 	# Plot the response time data.
 	for num,result in enumerate(sorted(experiments)):
+		if len(experiments[result]['responses']) == 0:
+			# No ping responses were received. 100% loss. No points to graph.
+			continue
+
 		points = [(icmp_seq / (1 / results['ping_interval']), time) for (icmp_seq, ttl, time) in experiments[result]['responses']]
 		points = zip(*points)
 		if line_graph:
