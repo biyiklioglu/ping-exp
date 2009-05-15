@@ -18,12 +18,12 @@ class Colors(object):
 	"""Class to manage a list of colors for the graph."""
 	def __init__(self):
 		# Pick the first few colors so at least they look good.
-		self.colors=['#3194e0', '#49db50', '#e03131']
+		self.colors=['#3194e0', '#49db50', '#e03131', '#e1a127', '#bf35e1', '#3db7b0']
 
 	def _expand_list(self, num_elements):
 		"""Function to expand the color list with random colors so that there are at least num_elements colors."""
 		for i in range(len(self.colors), num_elements):
-			c = "#%02x%02x%02x" %(random.randrange(0, 255, 1),random.randrange(0, 255, 1),random.randrange(0, 255, 1))
+			c = "#%02x%02x%02x" %(random.randrange(0,255,1), random.randrange(0,255,1), random.randrange(0, 255, 1))
 			self.colors.append(c)
 
 	def __getitem__(self, index):
@@ -111,6 +111,10 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=Fa
 	"""Function which is executed as a process to run the ping experiment."""
 	results = ping(host, qos=qos, interval=interval, count=count, flood=flood, debug_prefix=experiment_id)
 
+	# Store details about this experiment in the results.
+	results['host'] = host
+	results['qos'] = qos
+
 	results_q.put((experiment_id, results))
 
 def graph(results, line_graph=False, image_file=None):
@@ -124,7 +128,7 @@ def graph(results, line_graph=False, image_file=None):
 
 	# Create the response time graph.
 	ax = fig.add_subplot(2,1,1)
-	ax.set_title('Latency vs time for %s' %(results['host']), TITLE_FONT)
+	ax.set_title('Latency vs time', TITLE_FONT)
 	ax.set_xlabel('Time (s)')
 	ax.set_ylabel('Latency (ms)')
 
@@ -190,16 +194,15 @@ def graph(results, line_graph=False, image_file=None):
 	else:
 		plt.show()
 
-def experiment(host, ping_count, ping_interval):
+def experiment(ping_count, ping_interval, target_list):
 	"""Function to define and run the ping experiment."""
 	# Create a queue for receiving the results from the work processes.
 	results_q = Queue()
 
 	# Setup the experiments.
 	experiments = []
-	experiments.append({'args': (results_q, 'Default', '%s'%(host)), 'kwargs': {'qos': 0, 'interval': ping_interval, 'count': ping_count}})
-	experiments.append({'args': (results_q, 'High priority', '%s'%(host)), 'kwargs': {'qos': 16, 'interval': ping_interval, 'count': ping_count}})
-	experiments.append({'args': (results_q, 'Low priority', '%s'%(host)), 'kwargs': {'qos': 8, 'interval': ping_interval, 'count': ping_count}})
+	for target in target_list:
+		experiments.append({'args': (results_q, target[0], target[1]), 'kwargs': {'qos': target[2], 'interval': ping_interval, 'count': ping_count}})
 
 	# Start each experiment.
 	for num,experiment in enumerate(experiments):
@@ -226,29 +229,30 @@ def experiment(host, ping_count, ping_interval):
 	# Store (roughly) when the experiment ends.
 	results['end-time'] = time.time()
 
-	# Store the host, ping_count and ping_interval in results.
-	results['host'] = host
+	# Store the ping_count and ping_interval in results. These are global values.
 	results['ping_count'] = ping_count
 	results['ping_interval'] = ping_interval
 
 	return results
 
 def usage(prog_name):
-	output = "Usage: %s [-h HOST [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]\n" %(prog_name)
-	output += "-h HOST: Address of host to ping. Cannot be used with -r.\n"
-	output += "-w FILE: Write the results to FILE. Only valid with -h.\n"
-	output += "-r FILE: Read results from FILE. Cannot be used with -h.\n"
+	output = "Usage: %s [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT] [-l] [-o FILE] \n" %(prog_name)
+	output += "-t TARGET: Specify the ping target information. TARGET string is 'ID,FQDN,TOS (see below)'. Cannot be used with -r.\n"
+	output += "-w FILE: Write the results to FILE. Only valid with -t.\n"
+	output += "-r FILE: Read results from FILE. Cannot be used with -t.\n"
 	output += "-i INTERVAL: Time in seconds between pings. Default .2 seconds.\n"
 	output += "-c COUNT: Number of pings to transmit. Default 400.\n"
 	output += "-o FILE: Name of a file to output a PNG of the graph to.\n"
 	output += "-l: Plot a line graph instead of a scatter plot.\n"
+	output += "\n"
+	output += "TARGET: Experiment identifier,host or IP to ping,TOS field value.\n"
 
 	return output
 
 if __name__ == '__main__':
 	ping_count=400
 	ping_interval=.2
-	host=None
+	targets=[]
 	line_graph=False
 	write_file = False # Write the results to a file?
 	read_file = False # Read results from a file?
@@ -256,10 +260,10 @@ if __name__ == '__main__':
 
 	# Process the command line options.
 	try:
-		opts,args = getopt.getopt(sys.argv[1:], 'h:w:r:c:i:o:l')
+		opts,args = getopt.getopt(sys.argv[1:], 't:w:r:c:i:o:l')
 	except getopt.GetoptError:
 		print >> sys.stderr, usage(sys.argv[0])
-		print >> sys.stderr, "Error: Unknown argument"
+		print >> sys.stderr, "Error: Unknown argument."
 		raise SystemExit()
 
 	for o,a in opts:
@@ -273,8 +277,16 @@ if __name__ == '__main__':
 			ping_count = int(a)
 		elif o == '-i':
 			ping_interval = float(a)
-		elif o == '-h':
-			host = a
+		elif o == '-t':
+			target_info = a.split(',')
+			if len(target_info) != 3:
+				print >> sys.stderr, usage(sys.argv[0])
+				print >> sys.stderr, "Error: Invalid target format."
+				raise SystemExit()
+
+			targets.append(a.split(','))
+			targets = [(t[0].strip(),t[1].strip(),t[2].strip())  for t in targets]
+			targets = [(t[0].rstrip(),t[1].rstrip(),t[2].rstrip())  for t in targets]
 		elif o == '-o':
 			image_filename = a
 		elif o == '-l':
@@ -288,25 +300,25 @@ if __name__ == '__main__':
 		print >> sys.stderr, "Error: -r and -w cannot be used together."
 		raise SystemExit()
 
-	# No sense in passing -h with -r either.
-	if read_file and host:
+	# No sense in passing -t with -r either.
+	if read_file and (targets != []):
 		print >> sys.stderr, usage(sys.argv[0])
-		print >> sys.stderr, "Error: -h and -r cannot be used together."
+		print >> sys.stderr, "Error: -t and -r cannot be used together."
 		raise SystemExit()
 
-	# But one of -r or -h must be used.
-	if not read_file and not host:
+	# But one of -r or -t must be used.
+	if not read_file and not (targets != []):
 		print >> sys.stderr, usage(sys.argv[0])
-		print >> sys.stderr, "Error: Must pass one of -h or -r."
+		print >> sys.stderr, "Error: Must pass one of -t or -r."
 		raise SystemExit()
 
-	# Either do the experiment of get the results from a file.
+	# Either get the results from a file or do the experiment.
 	if read_file:
 		f = open(file, 'r')
 		results = pickle.load(f)
 		f.close()
 	else:
-		results = experiment(host, ping_count, ping_interval)
+		results = experiment(ping_count, ping_interval, targets)
 
 	# Save the results if -w was passed (this is mutally exclusive of -r).
 	if write_file:
