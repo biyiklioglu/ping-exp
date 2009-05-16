@@ -236,16 +236,21 @@ def experiment(ping_count, ping_interval, target_list):
 	return results
 
 def usage(prog_name):
-	output = "Usage: %s [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT] [-l] [-o FILE] \n" %(prog_name)
-	output += "-t TARGET: Specify the ping target information. TARGET string is 'ID,FQDN,TOS (see below)'. Cannot be used with -r.\n"
-	output += "-w FILE: Write the results to FILE. Only valid with -t.\n"
-	output += "-r FILE: Read results from FILE. Cannot be used with -t.\n"
-	output += "-i INTERVAL: Time in seconds between pings. Default .2 seconds.\n"
-	output += "-c COUNT: Number of pings to transmit. Default 400.\n"
-	output += "-o FILE: Name of a file to output a PNG of the graph to.\n"
-	output += "-l: Plot a line graph instead of a scatter plot.\n"
-	output += "\n"
-	output += "TARGET: Experiment identifier,host or IP to ping,TOS field value.\n"
+	output = \
+	"""
+Usage: %s [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]
+	  [-l] [-o FILE]"
+-t TARGET: Specify the ping target information. TARGET string is 'ID,FQDN,TOS'
+	   (see below). Cannot be used with -r.
+-w FILE: Write the results to FILE. Only valid with -t.
+-r FILE: Read results from FILE. Cannot be used with -t.
+-i INTERVAL: Time in seconds between pings. Default .2 seconds.
+-c COUNT: Number of pings to transmit. Default 400.
+-o FILE: Name of a file to output a PNG of the graph to.
+-l: Plot a line graph instead of a scatter plot.
+
+TARGET: Experiment identifier,host or IP to ping,TOS field value.
+	""" %(prog_name)
 
 	return output
 
