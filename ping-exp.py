@@ -156,7 +156,8 @@ def graph(results, line_graph=False, image_file=None):
 	# For convenience get a ref to the experiment results.
 	experiments = results['experiments']
 
-	# Plot the response time data.
+	# Plot the response time data and keep track of the largest time (X-axis) value.
+	x_max = 0
 	for num,result in enumerate(sorted(experiments)):
 		if len(experiments[result]['responses']) == 0:
 			# No ping responses were received. 100% loss. No points to graph.
@@ -169,8 +170,11 @@ def graph(results, line_graph=False, image_file=None):
 		else:
 			ret = ax.scatter(points[0], points[1], c=colors[num], s=3, linewidths=0)
 
+		if points[0][-1:][0] > x_max:
+			x_max = points[0][-1:][0]
+
 	# Set the axis since auto leaves too much padding.
-	ax.axis(xmin=0,ymin=0,xmax=points[0][-1:][0])
+	ax.axis(xmin=0,ymin=0,xmax=x_max)
 
 	# Plot the packet loss graph.
 	loss = [experiments[key]['summary']['packet_loss'] for key in sorted(experiments)]
