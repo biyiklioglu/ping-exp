@@ -97,6 +97,7 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	ret = p.wait()
 	if ret >= 2:
 		# Ping failed. Dump the output ping sent to stderr.
+		print "Ping failed. Ping standard error output follows this message."
 		for line in p.stderr.readlines():
 			print line
 
