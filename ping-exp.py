@@ -38,13 +38,15 @@ class Colors(object):
 
 		return self.colors[:size]
 
-def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
+def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''):
 	"""Function to run the ping command and extract the results; may be Linux specific."""
 	result = {}
 	result['responses'] = []
+	truncated_responses = False
 
 	# Regular expressions to obtain the information from ping's output.
 	response_re = re.compile('icmp_seq=(?P<icmp_seq>\d+) ttl=(?P<ttl>\d+) time=(?P<time>\d+(\.\d+|)) ms')
+	response_truncated_re = re.compile('(truncated)')
 	summary_re = re.compile('(?P<transmitted>\d+) packets transmitted, (?P<received>\d+) received, (\+(?P<errors>\d+) errors, |)(?P<packet_loss>\d+)% packet loss, time (?P<time>\d+(\.\d+|))ms')
 	rtt_summary_re = re.compile('rtt min/avg/max/mdev = (?P<min>\d+(\.\d+|))/(?P<avg>\d+(\.\d+|))/(?P<max>\d+(\.\d+|))/(?P<mdev>\d+(\.\d+|)) ms')
 
@@ -53,6 +55,8 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 	args.append('-i %.3f'%(interval))
 	args.append('-Q %i'%(int(qos)))
 	args.append('-c %i'%(count))
+	if size != '':
+		args.append('-s %i' %(int(size)))
 	if flood:
 		args.append('-f')
 	args.append(host)
@@ -73,6 +77,15 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 		m = response_re.search(line)
 		if m != None:
 			result['responses'].append((int(m.group('icmp_seq')), int(m.group('ttl')), float(m.group('time'))))
+
+		# Look for response lines with truncated responses. These lines do not have a response time so print
+		# an error message.
+		# TODO - It would be better to pass the fact that we saw a truncated response back in the results
+		# vs print an error here.
+		m = response_truncated_re.search(line)
+		if m != None and truncated_responses == False:
+			print "Error: Truncated responses for %s. No response times recorded." %(host)
+			truncated_responses = True
 
 		# Match the packet summary line.
 		m = summary_re.search(line)
@@ -108,9 +121,10 @@ def ping(host, qos=0, interval=1, count=5, flood=False, debug_prefix=''):
 
 	return result
 
-def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, flood=False):
+def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='', flood=False):
 	"""Function which is executed as a process to run the ping experiment."""
-	results = ping(host, qos=qos, interval=interval, count=count, flood=flood, debug_prefix=experiment_id)
+	results = ping(host, qos=qos, interval=interval, count=count, size=size, flood=flood,
+											debug_prefix=experiment_id)
 
 	# Store details about this experiment in the results.
 	results['host'] = host
@@ -207,7 +221,7 @@ def experiment(ping_count, ping_interval, target_list):
 	# Setup the experiments.
 	experiments = []
 	for target in target_list:
-		experiments.append({'args': (results_q, target[0], target[1]), 'kwargs': {'qos': target[2], 'interval': ping_interval, 'count': ping_count}})
+		experiments.append({'args': (results_q, target[0], target[1]), 'kwargs': {'qos': target[2], 'size': target[3], 'interval': ping_interval, 'count': ping_count}})
 
 	# Start each experiment.
 	for num,experiment in enumerate(experiments):
@@ -254,7 +268,18 @@ Usage: %s [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]
 -o FILE: Name of a file to output a PNG of the graph to.
 -l: Plot a line graph instead of a scatter plot.
 
-TARGET: Experiment identifier,host or IP to ping,TOS field value.
+TARGET: Experiment identifier,host or IP to ping,TOS field value[,packet size]
+
+Examples:
+
+1) Compare the latency to Google and Yahoo.
+./ping-exp.py -t Google,www.google.com,0 -t Yahoo,www.yahoo.com,0 -i .2 -c 50 -l
+
+2) Compare the latency to Yahoo with small and large packets.
+./ping-exp.py -t Yahoo,www.yahoo.com,0,100 -t YahooBig,www.yahoo.com,0,1400 -i .2 -c 50 -l
+
+3) Compare the latency to Google with two different DSCP values.
+./ping-exp.py -t Google0,www.google.com,0 -t Google8,www.google.com,8 -i .2 -c 50 -l
 	""" %(prog_name)
 
 	return output
@@ -289,14 +314,24 @@ if __name__ == '__main__':
 			ping_interval = float(a)
 		elif o == '-t':
 			target_info = a.split(',')
-			if len(target_info) != 3:
+			# Each target has at least three options. The size is optional.
+			if len(target_info) != 3 and len(target_info) != 4:
 				print >> sys.stderr, usage(sys.argv[0])
 				print >> sys.stderr, "Error: Invalid target format."
 				raise SystemExit()
 
-			targets.append(a.split(','))
-			targets = [(t[0].strip(),t[1].strip(),t[2].strip())  for t in targets]
-			targets = [(t[0].rstrip(),t[1].rstrip(),t[2].rstrip())  for t in targets]
+			# If size was not passed (it's optional) add the value ''. This causes the default
+			# ping packet size to be used.
+			if len(target_info) == 3:
+				target_info.append('')
+
+			# Append this target to the list of all targets.
+			targets.append(target_info)
+
+			# It would be slightly nicer if these filters weren't run on the entire target
+			# list for every new target but the overhead is negligible.
+			targets = [(t[0].strip(),t[1].strip(),t[2].strip(),t[3].strip())  for t in targets]
+			targets = [(t[0].rstrip(),t[1].rstrip(),t[2].rstrip(),t[3].rstrip())  for t in targets]
 		elif o == '-o':
 			image_filename = a
 		elif o == '-l':
