@@ -45,7 +45,7 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 	truncated_responses = False
 
 	# Regular expressions to obtain the information from ping's output.
-	response_re = re.compile('icmp_seq=(?P<icmp_seq>\d+) ttl=(?P<ttl>\d+) time=(?P<time>\d+(\.\d+|)) ms')
+	response_re = re.compile('icmp_[rs]eq=(?P<icmp_seq>\d+) ttl=(?P<ttl>\d+) time=(?P<time>\d+(\.\d+|)) ms')
 	response_truncated_re = re.compile('(truncated)')
 	summary_re = re.compile('(?P<transmitted>\d+) packets transmitted, (?P<received>\d+) received, (\+(?P<errors>\d+) errors, |)(?P<packet_loss>\d+)% packet loss, time (?P<time>\d+(\.\d+|))ms')
 	rtt_summary_re = re.compile('rtt min/avg/max/mdev = (?P<min>\d+(\.\d+|))/(?P<avg>\d+(\.\d+|))/(?P<max>\d+(\.\d+|))/(?P<mdev>\d+(\.\d+|)) ms')
@@ -77,6 +77,7 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 		m = response_re.search(line)
 		if m != None:
 			result['responses'].append((int(m.group('icmp_seq')), int(m.group('ttl')), float(m.group('time'))))
+			continue
 
 		# Look for response lines with truncated responses. These lines do not have a response time so print
 		# an error message.
@@ -86,6 +87,7 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 		if m != None and truncated_responses == False:
 			print "Error: Truncated responses for %s. No response times recorded." %(host)
 			truncated_responses = True
+			continue
 
 		# Match the packet summary line.
 		m = summary_re.search(line)
@@ -94,6 +96,7 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 						'received': int(m.group('received')),
 						'packet_loss': int(m.group('packet_loss')),
 						'time': float(m.group('time'))}
+			continue
 
 		# Match the RTT summary line.
 		m = rtt_summary_re.search(line)
@@ -102,6 +105,10 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 						'avg': float(m.group('avg')),
 						'max': float(m.group('max')),
 						'mdev': float(m.group('mdev'))}
+			continue
+
+		# If we got here this is a line that didn't match.
+		#print "UNMATCHED: ", line
 
 	# Wait for ping to exit (which is should have already happened since readlines got an EOF).
 	# 0 - At least one response received.
