@@ -2,6 +2,7 @@
 # Dan Siemon <dan@coverfire.com>
 # April 2009
 # License: Affero GPLv3
+
 import pickle
 import random
 import getopt
@@ -38,6 +39,13 @@ class Colors(object):
 
 		return self.colors[:size]
 
+##
+# ping()
+# Returns: {'responses': [(seq, ttl, time), ...],
+#           'summary': {'transmitted': int, 'received': int, 'packet_loss': int, 'time': float}},
+#           'rtt_summary': {'min': float, 'avg': float, 'max': float, 'mdev': float},
+#           }
+##
 def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''):
 	"""Function to run the ping command and extract the results; may be Linux specific."""
 	result = {}
@@ -128,6 +136,7 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 
 	return result
 
+
 def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='', flood=False):
 	"""Function which is executed as a process to run the ping experiment."""
 	results = ping(host, qos=qos, interval=interval, count=count, size=size, flood=flood,
@@ -137,7 +146,23 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='',
 	results['host'] = host
 	results['qos'] = qos
 
+        # TODO - Good place to calculate more statistics since this is a separate process.
+
+        # Calculate the min and max response times.
+        min = results['responses'][0][2]
+        max = results['responses'][0][2]
+        for response in results['responses']:
+            if response[2] < min:
+                min = response[2]
+            if response[2] > max:
+                max = response[2]
+
+        results['min'] = min
+        results['max'] = max
+
+        # Put the results onto the results Queue to be collected by the main process.
 	results_q.put((experiment_id, results))
+
 
 def graph(results, line_graph=False, image_file=None):
 	"""Function to graph the results of a ping experiment."""
@@ -145,35 +170,41 @@ def graph(results, line_graph=False, image_file=None):
 	colors = Colors()
 
 	# Create the figure.
-	fig = plt.figure(figsize=(10,6), facecolor='w')
+	fig = plt.figure(figsize=(10,10), facecolor='w')
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
 
 	# Create the response time graph.
-	ax = fig.add_subplot(2,1,1)
+	ax = fig.add_subplot(3,1,1)
 	ax.set_title('Latency vs time', TITLE_FONT)
 	ax.set_xlabel('Time (s)')
 	ax.set_ylabel('Latency (ms)')
 
 	# Create the packet loss bar graph.
-	loss_graph = fig.add_subplot(2,4,5)
+	loss_graph = fig.add_subplot(3,4,5)
 	loss_graph.set_title('Packet loss', TITLE_FONT)
 	loss_graph.set_xlabel('Traffic class')
 	loss_graph.set_ylabel('Packet loss (%)')
-	loss_graph.set_xticks([])
+	loss_graph.set_xticks([]) # Disables x ticks.
 
 	# Create the average latency graph.
-	latency_graph = fig.add_subplot(2,4,6)
+	latency_graph = fig.add_subplot(3,4,6)
 	latency_graph.set_title('Latency avg', TITLE_FONT)
 	latency_graph.set_xlabel('Traffic class')
 	latency_graph.set_ylabel('Average (ms)')
-	latency_graph.set_xticks([])
+	latency_graph.set_xticks([]) # Disables x ticks.
 
 	# Create the mean deviation bar graph.
-	mdev_graph = fig.add_subplot(2,4,7)
+	mdev_graph = fig.add_subplot(3,4,7)
 	mdev_graph.set_title('Latency mdev', TITLE_FONT)
 	mdev_graph.set_xlabel('Traffic class')
 	mdev_graph.set_ylabel('Mean deviation (ms)')
-	mdev_graph.set_xticks([])
+	mdev_graph.set_xticks([]) # Disables x ticks.
+
+        # Create the latency histogram.
+        hist1_graph = fig.add_subplot(3,1,3)
+	hist1_graph.set_title('Latency histogram', TITLE_FONT)
+	hist1_graph.set_xlabel('Latency')
+	hist1_graph.set_ylabel('Samples')
 
 	# For convenience get a ref to the experiment results.
 	experiments = results['experiments']
@@ -210,8 +241,15 @@ def graph(results, line_graph=False, image_file=None):
 	mdev = [experiments[key]['rtt_summary']['mdev'] for key in sorted(experiments)]
 	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=colors.list(len(mdev)))
 
-	# Add the legend.
-	plt.legend(ret, [key for key in sorted(experiments)], loc=(1.1,0))
+	# Add the legend (beside the loss, average and mean latency graphs).
+	plt.legend(ret, [key for key in sorted(experiments)], loc=(.75,1.5))
+
+        # Plot the latency histograms (for now all on one which is weird).
+        times = []
+        for num,result in enumerate(sorted(experiments)):
+            times.append([time for (icmp_seq, ttl, time) in experiments[result]['responses']])
+
+        hist1_graph.hist(times, bins=50, color=colors.list(len(times)))
 
 	# Write out the image if requested otherwise show it.
 	if image_file:
@@ -219,6 +257,7 @@ def graph(results, line_graph=False, image_file=None):
                 canvas.print_png(image_file)
 	else:
 		plt.show()
+
 
 def experiment(ping_count, ping_interval, target_list):
 	"""Function to define and run the ping experiment."""
@@ -260,6 +299,7 @@ def experiment(ping_count, ping_interval, target_list):
 	results['ping_interval'] = ping_interval
 
 	return results
+
 
 def usage(prog_name):
 	output = \
