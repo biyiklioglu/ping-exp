@@ -146,7 +146,7 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='',
 	results['host'] = host
 	results['qos'] = qos
 
-        # TODO - Good place to calculate more statistics since this is a separate process.
+        # TODO - Good place to calculate more statistics since this is in a separate process.
 
         # Calculate the min and max response times.
         min = results['responses'][0][2]
@@ -168,6 +168,7 @@ def graph(results, line_graph=False, image_file=None):
 	"""Function to graph the results of a ping experiment."""
 	TITLE_FONT = {'family': 'sans-serif', 'weight': 'bold', 'size': 14}
 	colors = Colors()
+        HIST_BIN_SIZE_IN_MS = 2 # Size of the histogram bins in ms.
 
 	# Create the figure.
 	fig = plt.figure(figsize=(10,10), facecolor='w')
@@ -202,7 +203,7 @@ def graph(results, line_graph=False, image_file=None):
 
         # Create the latency histogram.
         hist1_graph = fig.add_subplot(3,1,3)
-	hist1_graph.set_title('Latency histogram', TITLE_FONT)
+	hist1_graph.set_title('Latency histogram (%i ms bins)' %(HIST_BIN_SIZE_IN_MS), TITLE_FONT)
 	hist1_graph.set_xlabel('Latency')
 	hist1_graph.set_ylabel('Samples')
 
@@ -244,12 +245,23 @@ def graph(results, line_graph=False, image_file=None):
 	# Add the legend (beside the loss, average and mean latency graphs).
 	plt.legend(ret, [key for key in sorted(experiments)], loc=(.75,1.5))
 
+        ##
         # Plot the latency histograms (for now all on one which is weird).
+        ##
+
+        # Collect the data into the form that Matplotlib wants and identify the largest sample in
+        # all experiments.
         times = []
+        max_latency = 0
         for num,result in enumerate(sorted(experiments)):
             times.append([time for (icmp_seq, ttl, time) in experiments[result]['responses']])
+            if experiments[result]['max'] > max_latency:
+                max_latency = experiments[result]['max']
 
-        hist1_graph.hist(times, bins=50, color=colors.list(len(times)))
+        # How many bins should we have? 2ms bins.
+        bins = max_latency / HIST_BIN_SIZE_IN_MS
+
+        hist1_graph.hist(times, bins=bins, range=(0,max_latency), color=colors.list(len(times)))
 
 	# Write out the image if requested otherwise show it.
 	if image_file:
