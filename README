@@ -1,4 +1,4 @@
-ping-exp.py: Ping one or more destinations and graph the results.
+pingexp.py: Ping one or more destinations and graph the results.
 
 Requirements:
 	Python 2.6
@@ -6,7 +6,7 @@ Requirements:
 
 Ping-exp pings the passed targets, collects and then graphs the results.
 
-Usage: ./ping-exp.py [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]
+Usage: ./pingexp.py [-t TARGET [-w FILE ] | -r FILE ] [-i INTERVAL] [-c COUNT]
 	  [-l] [-o FILE]"
 -t TARGET: Specify the ping target information. TARGET string is 'ID,FQDN,TOS'
 	   (see below). Cannot be used with -r.
@@ -38,11 +38,11 @@ Examples:
 #1) Ping Google and Yahoo 100 times, .2 seconds between pings. Generate a line
 graph.
 
-ping-exp.py -t Google,www.google.com,0 -t Yahoo,www.yahoo.com,0 -c 100 -i .2 -l
+pingexp.py -t Google,www.google.com,0 -t Yahoo,www.yahoo.com,0 -c 100 -i .2 -l
 
 #2) Same as above instead of graphing save the results to results.data.
 
-ping-exp.py -t Google,www.google.com,0 -t Yahoo,www.yahoo.com,0 -c 100 -i .2 -w results.data
+pingexp.py -t Google,www.google.com,0 -t Yahoo,www.yahoo.com,0 -c 100 -i .2 -w results.data
 
 #3) Load results.
-ping-exp.py -r results.data
+pingexp.py -r results.data

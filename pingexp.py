@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # Dan Siemon <dan@coverfire.com>
+# http://www.coverfire.com/projects/ping-exp/
 # April 2009
 # License: Affero GPLv3
 
