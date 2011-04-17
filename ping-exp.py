@@ -13,6 +13,7 @@ import re
 from multiprocessing import Process, Queue
 
 import matplotlib.pyplot as plt
+import matplotlib.mlab as mlab
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 class Colors(object):
@@ -42,6 +43,7 @@ class Colors(object):
 ##
 # ping()
 # Returns: {'responses': [(seq, ttl, time), ...],
+#           'losses': [seq, ...],
 #           'summary': {'transmitted': int, 'received': int, 'packet_loss': int, 'time': float}},
 #           'rtt_summary': {'min': float, 'avg': float, 'max': float, 'mdev': float},
 #           }
@@ -137,6 +139,27 @@ def ping(host, qos=0, interval=1, count=5, size='', flood=False, debug_prefix=''
 	return result
 
 
+def find_lost_sequence_numbers(results):
+    """Function to identify the ICMP sequence numbers of lost packets.
+        Requires that the input is sorted."""
+
+    # If there were no losses exit early.
+    if results['summary']['transmitted'] == results['summary']['received']:
+        return []
+
+    # Build a list of all transmitted sequence numbers.
+    all_seqs = set(range(1, results['summary']['transmitted']+1))
+
+    # Build a set of all the sequence numbers which were not lost.
+    returned_seqs = set([response[0] for response in results['responses']])
+
+    lost_seqs = list(all_seqs - returned_seqs)
+
+    assert(len(lost_seqs) + results['summary']['received'] == results['summary']['transmitted'])
+
+    return lost_seqs
+
+
 def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='', flood=False):
 	"""Function which is executed as a process to run the ping experiment."""
 	results = ping(host, qos=qos, interval=interval, count=count, size=size, flood=flood,
@@ -146,7 +169,15 @@ def do_ping(results_q, experiment_id, host, qos=0, interval=1, count=5, size='',
 	results['host'] = host
 	results['qos'] = qos
 
-        # TODO - Good place to calculate more statistics since this is in a separate process.
+        # This is a good place to calculate statistics since this is in a separate process.
+
+        # Sort the results by the ICMP sequence # in case some responses came back out of order.
+        def get_ttl(response):
+            return response[0]
+        results['responses'] = sorted(results['responses'], key=get_ttl)
+
+        # Get a list of all the sequence numbers of packets which were dropped.
+        results['losses'] = find_lost_sequence_numbers(results)
 
         # Calculate the min and max response times.
         min = results['responses'][0][2]
@@ -175,42 +206,51 @@ def graph(results, line_graph=False, image_file=None):
 	fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.07, wspace=.4, hspace=.4)
 
 	# Create the response time graph.
-	ax = fig.add_subplot(3,1,1)
+	ax = fig.add_subplot(4,1,1)
 	ax.set_title('Latency vs time', TITLE_FONT)
 	ax.set_xlabel('Time (s)')
 	ax.set_ylabel('Latency (ms)')
 
 	# Create the packet loss bar graph.
-	loss_graph = fig.add_subplot(3,4,5)
+	loss_graph = fig.add_subplot(4,4,5)
 	loss_graph.set_title('Packet loss', TITLE_FONT)
 	loss_graph.set_xlabel('Traffic class')
 	loss_graph.set_ylabel('Packet loss (%)')
 	loss_graph.set_xticks([]) # Disables x ticks.
 
 	# Create the average latency graph.
-	latency_graph = fig.add_subplot(3,4,6)
+	latency_graph = fig.add_subplot(4,4,6)
 	latency_graph.set_title('Latency avg', TITLE_FONT)
 	latency_graph.set_xlabel('Traffic class')
 	latency_graph.set_ylabel('Average (ms)')
 	latency_graph.set_xticks([]) # Disables x ticks.
 
 	# Create the mean deviation bar graph.
-	mdev_graph = fig.add_subplot(3,4,7)
+	mdev_graph = fig.add_subplot(4,4,7)
 	mdev_graph.set_title('Latency mdev', TITLE_FONT)
 	mdev_graph.set_xlabel('Traffic class')
 	mdev_graph.set_ylabel('Mean deviation (ms)')
 	mdev_graph.set_xticks([]) # Disables x ticks.
 
         # Create the latency histogram.
-        hist1_graph = fig.add_subplot(3,1,3)
+        hist1_graph = fig.add_subplot(4,1,3)
 	hist1_graph.set_title('Latency histogram (%i ms bins)' %(HIST_BIN_SIZE_IN_MS), TITLE_FONT)
 	hist1_graph.set_xlabel('Latency')
 	hist1_graph.set_ylabel('Samples')
 
+        # Create the loss graph.
+        loss_time_graph = fig.add_subplot(4,1,4)
+	loss_time_graph.set_title('Loss vs time', TITLE_FONT)
+	loss_time_graph.set_xlabel('Time (s)')
+	loss_time_graph.set_ylabel('Loss event')
+	loss_time_graph.set_yticks([]) # Disables y ticks.
+
 	# For convenience get a ref to the experiment results.
 	experiments = results['experiments']
 
+        ####
 	# Plot the response time data and keep track of the largest time (X-axis) value.
+        ####
 	x_max = 0
 	for num,result in enumerate(sorted(experiments)):
 		if len(experiments[result]['responses']) == 0:
@@ -219,6 +259,7 @@ def graph(results, line_graph=False, image_file=None):
 
 		points = [(icmp_seq / (1 / results['ping_interval']), time) for (icmp_seq, ttl, time) in experiments[result]['responses']]
 		points = zip(*points)
+
 		if line_graph:
 			ret = ax.plot(points[0], points[1], c=colors[num], linewidth=0.6)
 		else:
@@ -230,24 +271,32 @@ def graph(results, line_graph=False, image_file=None):
 	# Set the axis since auto leaves too much padding.
 	ax.axis(xmin=0,ymin=0,xmax=x_max)
 
+        ####
 	# Plot the packet loss graph.
+        ####
 	loss = [experiments[key]['summary']['packet_loss'] for key in sorted(experiments)]
 	ret = loss_graph.bar([x for x in range(len(loss))], loss, width=1, color=colors.list(len(loss)))
 
+        ####
 	# Plot the average latency graph.
+        ####
 	latency = [experiments[key]['rtt_summary']['avg'] for key in sorted(experiments)]
 	ret = latency_graph.bar([x for x in range(len(latency))], latency, width=1, color=colors.list(len(latency)))
 
+        ####
 	# Plot the latency mean deviation graph.
+        ####
 	mdev = [experiments[key]['rtt_summary']['mdev'] for key in sorted(experiments)]
 	ret = mdev_graph.bar([x for x in range(len(mdev))], mdev, width=1, color=colors.list(len(mdev)))
 
+        ####
 	# Add the legend (beside the loss, average and mean latency graphs).
-	plt.legend(ret, [key for key in sorted(experiments)], loc=(.75,1.5))
+        ####
+	plt.legend(ret, [key for key in sorted(experiments)], loc=(.75,2.8))
 
-        ##
-        # Plot the latency histograms (for now all on one which is weird).
-        ##
+        ####
+        # Plot the latency histograms (for now all on one chart which is weird).
+        ####
 
         # Collect the data into the form that Matplotlib wants and identify the largest sample in
         # all experiments.
@@ -258,12 +307,31 @@ def graph(results, line_graph=False, image_file=None):
             if experiments[result]['max'] > max_latency:
                 max_latency = experiments[result]['max']
 
-        # How many bins should we have? 2ms bins.
-        bins = max_latency / HIST_BIN_SIZE_IN_MS
+        # How many bins should we have? Approximately HIST_BIN_SIZE_IN_MS sized bins.
+        bins = int(max_latency / HIST_BIN_SIZE_IN_MS)
 
-        hist1_graph.hist(times, bins=bins, range=(0,max_latency), color=colors.list(len(times)))
+        # Plot the histogram.
+        n, bins, patches = hist1_graph.hist(times, bins=bins, normed=True, range=(0,max_latency), color=colors.list(len(times)))
 
+        ####
+        # Plot the loss chart.
+        ####
+	for num,result in enumerate(sorted(experiments)):
+		if len(experiments[result]['losses']) == 0:
+                        # No loss. Nothing to do.
+			continue
+
+		points = [icmp_seq / (1 / results['ping_interval']) for icmp_seq in experiments[result]['losses']]
+
+                t = [num+1 for y in points] # Set the Y-value to the exeriment ID.
+
+		ret = loss_time_graph.scatter(points, t, c=colors[num], s=3, linewidths=0)
+
+	loss_time_graph.axis(xmin=0,ymin=0,xmax=x_max,ymax=num+2)
+
+        ####
 	# Write out the image if requested otherwise show it.
+        ####
 	if image_file:
 		canvas = FigureCanvas(fig)
                 canvas.print_png(image_file)
